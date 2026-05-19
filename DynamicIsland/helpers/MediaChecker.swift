@@ -31,27 +31,19 @@ final class MediaChecker: Sendable {
     }
 
     func checkDeprecationStatus() async throws -> Bool {
-        guard let scriptURL = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
-              let frameworkPath =
-                    Bundle.main.resourceURL?
-                        .appendingPathComponent("MediaRemoteAdapter.framework")
-                        .path
-        else {
+        let resources = AtollRuntimeResourceLocator.main
+
+        guard let adapter = resources.mediaRemoteAdapter() else {
             throw MediaCheckerError.missingResources
         }
 
-        let nowPlayingTestClientPath =
-            Bundle.main.bundleURL
-                .appendingPathComponent("Contents/Helpers/NowPlayingTestClient")
-                .path
-
-        guard FileManager.default.isExecutableFile(atPath: nowPlayingTestClientPath) else {
+        guard let nowPlayingTestClientPath = resources.nowPlayingTestClientPath() else {
             throw MediaCheckerError.missingResources
         }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [scriptURL.path, frameworkPath, nowPlayingTestClientPath, "test"]
+        process.arguments = [adapter.scriptURL.path, adapter.frameworkPath, nowPlayingTestClientPath, "test"]
 
         // Capture stderr to distinguish script errors from genuine deprecation.
         // The perl script's fail() and the framework's test function both exit
