@@ -243,10 +243,6 @@ func addShadowPadding(to size: CGSize, isMinimalistic: Bool) -> CGSize {
 ///
 /// Screens with a physical notch always use the standard notch shape.
 func shouldUseDynamicIslandMode(for screenName: String?) -> Bool {
-    guard Defaults[.externalDisplayStyle] == .dynamicIsland else {
-        return false
-    }
-
     var selectedScreen: NSScreen? = NSScreen.main
     if let screenName {
         selectedScreen = NSScreen.screens.first(where: { $0.localizedName == screenName })
@@ -258,7 +254,27 @@ func shouldUseDynamicIslandMode(for screenName: String?) -> Bool {
     }
 
     // Physical notch screens always use standard notch shape
-    return screen.safeAreaInsets.top <= 0
+    guard screen.safeAreaInsets.top <= 0 else {
+        return false
+    }
+
+    return externalDisplayStyle(for: screen) == .dynamicIsland
+}
+
+func atollScreenIdentifier(for screen: NSScreen) -> String {
+    if let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+        return String(screenNumber.uint32Value)
+    }
+    return screen.localizedName.isEmpty ? "main" : screen.localizedName
+}
+
+private func externalDisplayStyle(for screen: NSScreen) -> ExternalDisplayStyle {
+    let stylesByScreen = Defaults[.externalDisplayStylesByScreenID]
+    if let rawStyle = stylesByScreen[atollScreenIdentifier(for: screen)],
+       let style = ExternalDisplayStyle(rawValue: rawStyle) {
+        return style
+    }
+    return Defaults[.externalDisplayStyle]
 }
 
 /// Corner radius insets for the Dynamic Island pill shape.

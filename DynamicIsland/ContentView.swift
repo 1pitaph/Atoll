@@ -79,6 +79,7 @@ struct ContentView: View {
     @Default(.showDoNotDisturbIndicator) var showDoNotDisturbIndicator
     @Default(.enableScreenRecordingDetection) var enableScreenRecordingDetection
     @Default(.enableCapsLockIndicator) var enableCapsLockIndicator
+    @Default(.enableThirdPartyExtensions) var enableThirdPartyExtensions
     @Default(.enableExtensionLiveActivities) var enableExtensionLiveActivities
     @Default(.showStandardMediaControls) var showStandardMediaControls
     @Default(.externalDisplayStyle) var externalDisplayStyle
@@ -275,7 +276,7 @@ struct ContentView: View {
     }
 
     private var closedMusicContentEnabled: Bool {
-        enableMinimalisticUI || showStandardMediaControls
+        showStandardMediaControls
     }
 
     private var isMusicHUDDeferredAfterUnlock: Bool {
@@ -400,7 +401,8 @@ struct ContentView: View {
     
     /// Whether the LocalSend live activity should be shown
     private var localSendLiveActivityActive: Bool {
-        localSendService.isSending || 
+        guard Defaults[.dynamicShelf] else { return false }
+        return localSendService.isSending ||
         localSendService.transferState == .completed ||
         isLocalSendFailedOrRejected
     }
@@ -409,6 +411,40 @@ struct ContentView: View {
         if case .failed = localSendService.transferState { return true }
         if case .rejected = localSendService.transferState { return true }
         return false
+    }
+
+    private func isSneakPeekFeatureEnabled(_ type: SneakContentType) -> Bool {
+        switch type {
+        case .brightness, .volume, .backlight:
+            return Defaults[.enableSystemHUD]
+            || Defaults[.enableCustomOSD]
+            || Defaults[.enableVerticalHUD]
+            || Defaults[.enableCircularHUD]
+        case .music:
+            return closedMusicContentEnabled
+        case .mic, .privacy:
+            return Defaults[.enableCameraDetection] || Defaults[.enableMicrophoneDetection]
+        case .battery:
+            return Defaults[.showPowerStatusNotifications]
+        case .download:
+            return Defaults[.enableDownloadListener]
+        case .timer:
+            return enableTimerFeature
+        case .reminder:
+            return Defaults[.showCalendar] && enableReminderLiveActivity
+        case .recording:
+            return Defaults[.enableScreenRecordingDetection]
+        case .doNotDisturb:
+            return Defaults[.enableDoNotDisturbDetection] && Defaults[.showDoNotDisturbIndicator]
+        case .bluetoothAudio:
+            return Defaults[.showBluetoothDeviceConnections]
+        case .lockScreen:
+            return Defaults[.enableLockScreenLiveActivity]
+        case .capsLock:
+            return Defaults[.enableCapsLockIndicator]
+        case .extensionLiveActivity:
+            return Defaults[.enableThirdPartyExtensions] && Defaults[.enableExtensionLiveActivities]
+        }
     }
 
     /// Pill shape for Dynamic Island mode with animated corner radius transitions.
@@ -910,7 +946,7 @@ struct ContentView: View {
                             styleOverride: batteryModel.activeTemporaryHUDKind.map { resolvedBatteryNotificationStyle(for: $0) }
                         )
                         .id(batteryModel.activeTemporaryHUDToken)
-                      } else if isSneakPeekVisibleOnCurrentScreen && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && (coordinator.sneakPeek.type != .timer) && (coordinator.sneakPeek.type != .reminder) && !coordinator.sneakPeek.type.isExtensionPayload && ((coordinator.sneakPeek.type != .volume && coordinator.sneakPeek.type != .brightness && coordinator.sneakPeek.type != .backlight) || vm.notchState == .closed) {
+                      } else if isSneakPeekVisibleOnCurrentScreen && isSneakPeekFeatureEnabled(coordinator.sneakPeek.type) && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && (coordinator.sneakPeek.type != .timer) && (coordinator.sneakPeek.type != .reminder) && !coordinator.sneakPeek.type.isExtensionPayload && ((coordinator.sneakPeek.type != .volume && coordinator.sneakPeek.type != .brightness && coordinator.sneakPeek.type != .backlight) || vm.notchState == .closed) {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(
                                   coordinator.sneakPeek.type == .capsLock
@@ -920,13 +956,13 @@ struct ContentView: View {
                       } else if vm.notchState == .closed && capsLockManager.isCapsLockActive && Defaults[.enableCapsLockIndicator] && !vm.hideOnClosed && !lockScreenManager.isLocked {
                           InlineHUD(type: .constant(.capsLock), value: .constant(1.0), icon: .constant(""), hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(AnyTransition.move(edge: .trailing).combined(with: .opacity))
-                      } else if canShowMusicDuringExpansion && musicPairingEligible {
+                      } else if canShowMusicDuringExpansion && musicPairingEligible && Defaults[.showStandardMediaControls] {
                           MusicLiveActivity(secondary: musicSecondary)
                               .id("closed-music-live-activity")
                               .transition(closedLiveActivitySwapTransition)
-                      } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .timer) && vm.notchState == .closed && timerManager.isTimerActive && coordinator.timerLiveActivityEnabled && !vm.hideOnClosed {
+                      } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .timer) && vm.notchState == .closed && timerManager.isTimerActive && enableTimerFeature && coordinator.timerLiveActivityEnabled && !vm.hideOnClosed {
                           TimerLiveActivity()
-                      } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .reminder) && vm.notchState == .closed && reminderManager.isActive && enableReminderLiveActivity && !vm.hideOnClosed {
+                      } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .reminder) && vm.notchState == .closed && reminderManager.isActive && Defaults[.showCalendar] && enableReminderLiveActivity && !vm.hideOnClosed {
                           ReminderLiveActivity()
                       } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .recording) && vm.notchState == .closed && (recordingManager.isRecording || !recordingManager.isRecorderIdle) && Defaults[.enableScreenRecordingDetection] && !vm.hideOnClosed && !musicPairingEligible {
                           RecordingLiveActivity()
@@ -944,7 +980,7 @@ struct ContentView: View {
                             .transition(closedLiveActivitySwapTransition)
                     } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .privacy) && vm.notchState == .closed && privacyManager.hasAnyIndicator && (Defaults[.enableCameraDetection] || Defaults[.enableMicrophoneDetection]) && !vm.hideOnClosed {
                         PrivacyLiveActivity()
-                      } else if let extensionPayload = extensionStandalonePayload {
+                      } else if Defaults[.enableThirdPartyExtensions] && Defaults[.enableExtensionLiveActivities], let extensionPayload = extensionStandalonePayload {
                           let layout = extensionStandaloneLayout(
                               for: extensionPayload,
                               notchHeight: vm.effectiveClosedNotchHeight,
@@ -955,7 +991,7 @@ struct ContentView: View {
                               layout: layout,
                               isHovering: isHovering
                           )
-                      } else if !coordinator.expandingView.show && vm.notchState == .closed && !shelfState.isEmpty && !vm.hideOnClosed && !lockScreenManager.isLocked && !enableMinimalisticUI {
+                      } else if !coordinator.expandingView.show && vm.notchState == .closed && Defaults[.dynamicShelf] && !shelfState.isEmpty && !vm.hideOnClosed && !lockScreenManager.isLocked && !enableMinimalisticUI {
                           ShelfInlineLiveActivity()
                               .transition(.opacity.animation(.smooth(duration: 0.25)))
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
@@ -969,7 +1005,7 @@ struct ContentView: View {
                        }
                       
                       if isSneakPeekVisibleOnCurrentScreen {
-                          if (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && (coordinator.sneakPeek.type != .timer) && (coordinator.sneakPeek.type != .reminder) && (coordinator.sneakPeek.type != .capsLock) && !coordinator.sneakPeek.type.isExtensionPayload && !Defaults[.inlineHUD] && ((coordinator.sneakPeek.type != .volume && coordinator.sneakPeek.type != .brightness && coordinator.sneakPeek.type != .backlight) || vm.notchState == .closed) {
+                          if isSneakPeekFeatureEnabled(coordinator.sneakPeek.type) && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && (coordinator.sneakPeek.type != .timer) && (coordinator.sneakPeek.type != .reminder) && (coordinator.sneakPeek.type != .capsLock) && !coordinator.sneakPeek.type.isExtensionPayload && !Defaults[.inlineHUD] && ((coordinator.sneakPeek.type != .volume && coordinator.sneakPeek.type != .brightness && coordinator.sneakPeek.type != .backlight) || vm.notchState == .closed) {
                               SystemEventIndicatorModifier(eventType: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, sendEventBack: { _ in
                                   //
                               })
@@ -978,7 +1014,7 @@ struct ContentView: View {
                               .padding(.trailing, 8)
                           }
                           // Old sneak peek music
-                          else if coordinator.sneakPeek.type == .music {
+                          else if coordinator.sneakPeek.type == .music && isSneakPeekFeatureEnabled(coordinator.sneakPeek.type) {
                               if vm.notchState == .closed && !vm.hideOnClosed && activeSneakPeekStyle == .standard {
                                   HStack(alignment: .center) {
                                       Image(systemName: "music.note")
@@ -991,7 +1027,7 @@ struct ContentView: View {
                               }
                           }
                           // Timer sneak peek
-                          else if coordinator.sneakPeek.type == .timer {
+                          else if coordinator.sneakPeek.type == .timer && isSneakPeekFeatureEnabled(coordinator.sneakPeek.type) {
                               if !vm.hideOnClosed && activeSneakPeekStyle == .standard {
                                   HStack(alignment: .center) {
                                       Image(systemName: "timer")
@@ -1003,7 +1039,7 @@ struct ContentView: View {
                                   .padding(.bottom, 10)
                               }
                           }
-                          else if coordinator.sneakPeek.type == .reminder {
+                          else if coordinator.sneakPeek.type == .reminder && isSneakPeekFeatureEnabled(coordinator.sneakPeek.type) {
                               if !vm.hideOnClosed && activeSneakPeekStyle == .standard, let reminder = reminderManager.activeReminder {
                                   GeometryReader { geo in
                                       let chipColor = Color(nsColor: reminder.event.calendar.color).ensureMinimumBrightness(factor: 0.7)
@@ -1023,7 +1059,7 @@ struct ContentView: View {
                               }
                           }
                           // Extension live activity sneak peek
-                          else if case let .extensionLiveActivity(bundleID, activityID) = coordinator.sneakPeek.type {
+                          else if case let .extensionLiveActivity(bundleID, activityID) = coordinator.sneakPeek.type, isSneakPeekFeatureEnabled(coordinator.sneakPeek.type) {
                               if !vm.hideOnClosed && activeSneakPeekStyle == .standard {
                                   let payload = extensionLiveActivityManager.payload(bundleIdentifier: bundleID, activityID: activityID)
                                   let descriptor = payload?.descriptor
@@ -1066,26 +1102,28 @@ struct ContentView: View {
                           switch coordinator.currentView {
                               case .home:
                                   NotchHomeView(albumArtNamespace: albumArtNamespace)
-                              case .shelf:
+                              case .shelf where Defaults[.dynamicShelf]:
                                   NotchShelfView()
-                              case .timer:
+                              case .timer where Defaults[.enableTimerFeature]:
                                   NotchTimerView()
-                              case .stats:
+                              case .stats where Defaults[.enableStatsFeature]:
                                   NotchStatsView()
-                              case .colorPicker:
+                              case .colorPicker where Defaults[.enableColorPickerFeature]:
                                   NotchColorPickerView()
-                            case .notes:
+                            case .notes where Defaults[.enableClipboardManager]:
                                 NotchNotesView()
-                            case .clipboard:
+                            case .clipboard where Defaults[.enableClipboardManager]:
                                 NotchNotesView()
-                            case .terminal:
+                            case .terminal where Defaults[.enableTerminalFeature]:
                                 NotchTerminalView()
-                            case .extensionExperience:
+                            case .extensionExperience where Defaults[.enableThirdPartyExtensions]:
                                 if let payload = currentExtensionTabPayload() {
                                     ExtensionNotchExperienceTabView(payload: payload)
                                 } else {
                                     NotchHomeView(albumArtNamespace: albumArtNamespace)
                                 }
+                            default:
+                                NotchHomeView(albumArtNamespace: albumArtNamespace)
                           }
                       }
                       .id(coordinator.currentView)
@@ -1277,11 +1315,11 @@ struct ContentView: View {
     }
 
     private func resolveMusicSecondaryLiveActivity(isMusicPairingEligible: Bool = true) -> MusicSecondaryLiveActivity? {
-        if coordinator.timerLiveActivityEnabled && timerManager.isTimerActive {
+        if enableTimerFeature && coordinator.timerLiveActivityEnabled && timerManager.isTimerActive {
             return .timer
         }
 
-        if enableReminderLiveActivity, reminderManager.isActive, let reminder = reminderManager.activeReminder {
+        if Defaults[.showCalendar], enableReminderLiveActivity, reminderManager.isActive, let reminder = reminderManager.activeReminder {
             return .reminder(reminder)
         }
 
@@ -1303,7 +1341,7 @@ struct ContentView: View {
         }
 
         // Shelf: show file count as lowest-priority secondary
-        if !shelfState.isEmpty && !lockScreenManager.isLocked && !enableMinimalisticUI {
+        if Defaults[.dynamicShelf] && !shelfState.isEmpty && !lockScreenManager.isLocked && !enableMinimalisticUI {
             return .shelf(count: shelfState.items.count)
         }
 
@@ -1592,7 +1630,7 @@ struct ContentView: View {
             return nil
         }
 
-        guard enableExtensionLiveActivities else {
+        guard enableThirdPartyExtensions && enableExtensionLiveActivities else {
             ExtensionRoutingDiagnostics.shared.logSuppression(
                 .music,
                 reason: "feature toggle disabled",
@@ -1690,7 +1728,7 @@ struct ContentView: View {
             return nil
         }
 
-        guard enableExtensionLiveActivities else {
+        guard enableThirdPartyExtensions && enableExtensionLiveActivities else {
             ExtensionRoutingDiagnostics.shared.logSuppression(
                 .standalone,
                 reason: "feature toggle disabled",

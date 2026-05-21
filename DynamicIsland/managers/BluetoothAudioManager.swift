@@ -39,6 +39,7 @@ class BluetoothAudioManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let coordinator = DynamicIslandViewCoordinator.shared
     private var pollingTimer: Timer?
+    private var isMonitoring = false
     private let bluetoothPreferencesSuite = "/Library/Preferences/com.apple.Bluetooth"
     private let batteryReader = BluetoothLEBatteryReader()
     private var isLiveBatteryRefreshInFlight = false
@@ -80,16 +81,59 @@ class BluetoothAudioManager: ObservableObject {
     // MARK: - Initialization
     private init() {
         print("🎧 [BluetoothAudioManager] Initializing...")
-        setupBluetoothObservers()
-        checkInitialDevices()
-        startPollingForChanges()
+
+        Defaults.publisher(.showBluetoothDeviceConnections, options: [])
+            .sink { [weak self] change in
+                guard let self else { return }
+                if change.newValue {
+                    self.startMonitoring()
+                } else {
+                    self.stopMonitoring()
+                }
+            }
+            .store(in: &cancellables)
+
+        if Defaults[.showBluetoothDeviceConnections] {
+            startMonitoring()
+        }
     }
     
     deinit {
-        cleanup()
+        stopMonitoring()
+        cancellables.removeAll()
     }
     
     // MARK: - Setup Methods
+
+    func startMonitoring() {
+        guard !isMonitoring else { return }
+        setupBluetoothObservers()
+        checkInitialDevices()
+        startPollingForChanges()
+        isMonitoring = true
+    }
+
+    func stopMonitoring() {
+        guard isMonitoring else { return }
+        print("🎧 [BluetoothAudioManager] Cleaning up observers...")
+
+        pollingTimer?.invalidate()
+        pollingTimer = nil
+
+        let dnc = DistributedNotificationCenter.default()
+        dnc.removeObserver(self)
+        observers.removeAll()
+        hudBatteryWaitTasks.values.forEach { $0.cancel() }
+        hudBatteryWaitTasks.removeAll()
+        connectedDevices.removeAll()
+        batteryStatus.removeAll()
+        batteryStatusByAddress.removeAll()
+        batteryStatusByName.removeAll()
+        missingBatteryLog.removeAll()
+        lastConnectedDevice = nil
+        isBluetoothAudioConnected = false
+        isMonitoring = false
+    }
     
     /// Sets up observers for Bluetooth device connection/disconnection events
     private func setupBluetoothObservers() {
@@ -119,6 +163,7 @@ class BluetoothAudioManager: ObservableObject {
     
     /// Starts polling for device connection changes (fallback mechanism)
     private func startPollingForChanges() {
+        guard pollingTimer == nil else { return }
         print("🎧 [BluetoothAudioManager] Starting polling timer (3s interval)...")
         
         pollingTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
@@ -1688,22 +1733,6 @@ class BluetoothAudioManager: ObservableObject {
         }
     }
     
-    // MARK: - Cleanup
-    
-    private func cleanup() {
-        print("🎧 [BluetoothAudioManager] Cleaning up observers...")
-        
-        pollingTimer?.invalidate()
-        pollingTimer = nil
-        
-        let dnc = DistributedNotificationCenter.default()
-        dnc.removeObserver(self)
-        observers.removeAll()
-        cancellables.removeAll()
-        hudBatteryWaitTasks.values.forEach { $0.cancel() }
-        hudBatteryWaitTasks.removeAll()
-    }
-
     @MainActor
     func refreshConnectedDeviceBatteries() {
         refreshBatteryLevelsForConnectedDevices()

@@ -185,26 +185,30 @@ class SystemHUDManager {
         Defaults.publisher(.enableThirdPartyDDCIntegration, options: []).sink { [weak self] _ in
             guard let self = self, self.isSetupComplete else { return }
             Task { @MainActor in
-                await self.startSystemObserver()
+                await self.refreshSystemObserverForCurrentSettings()
             }
         }.store(in: &cancellables)
 
         Defaults.publisher(.thirdPartyDDCProvider, options: []).sink { [weak self] _ in
             guard let self = self, self.isSetupComplete else { return }
             Task { @MainActor in
-                await self.startSystemObserver()
+                await self.refreshSystemObserverForCurrentSettings()
             }
         }.store(in: &cancellables)
 
         Defaults.publisher(.enableExternalVolumeControlListener, options: []).sink { [weak self] _ in
             guard let self = self, self.isSetupComplete else { return }
             Task { @MainActor in
-                await self.startSystemObserver()
+                await self.refreshSystemObserverForCurrentSettings()
             }
         }.store(in: &cancellables)
     }
     
     private var cancellables = Set<AnyCancellable>()
+
+    private var hasActiveHUDMode: Bool {
+        Defaults[.enableSystemHUD] || Defaults[.enableCustomOSD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD]
+    }
 
     private var requiresSystemToggleHandling: Bool {
         Defaults[.enableSystemHUD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD]
@@ -224,7 +228,7 @@ class SystemHUDManager {
         }
         
         // Start observer if any HUD/OSD is enabled
-        if Defaults[.enableSystemHUD] || Defaults[.enableCustomOSD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD] {
+        if hasActiveHUDMode {
             Task { @MainActor in
                 await startSystemObserver()
                 self.isSetupComplete = true
@@ -232,6 +236,13 @@ class SystemHUDManager {
         } else {
             isSetupComplete = true
         }
+    }
+
+    @MainActor
+    func stop() async {
+        await stopSystemObserver()
+        isSetupComplete = false
+        coordinator = nil
     }
     
     /// Resolves the effective control flags, applying third-party DDC overrides.
@@ -270,7 +281,20 @@ class SystemHUDManager {
     }
 
     @MainActor
+    private func refreshSystemObserverForCurrentSettings() async {
+        if hasActiveHUDMode {
+            await startSystemObserver()
+        } else {
+            await stopSystemObserver()
+        }
+    }
+
+    @MainActor
     private func startSystemObserver() async {
+        guard hasActiveHUDMode else {
+            await stopSystemObserver()
+            return
+        }
         guard let coordinator = coordinator, !isSystemOperationInProgress else { return }
         
         isSystemOperationInProgress = true

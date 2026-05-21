@@ -16,6 +16,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import Combine
 import Foundation
 import SwiftUI
 import Observation
@@ -33,6 +34,7 @@ class DownloadManager {
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "com.dynamicisland.downloads.monitor", qos: .utility)
     private var completionTimer: Timer?
+    private var cancellables = Set<AnyCancellable>()
     private var hasPerformedInitialScan: Bool = false
     private var initialCrDownloadFiles: Set<String> = []
     private var previousAllFiles: Set<String> = []
@@ -43,7 +45,6 @@ class DownloadManager {
     }
     
     init() {
-        requestDownloadsPermissionIfNeeded()
         startMonitoringIfNeeded()
         
         Defaults.publisher(.enableDownloadListener)
@@ -53,6 +54,7 @@ class DownloadManager {
                     self.startMonitoringIfNeeded()
                 }
             }
+            .store(in: &cancellables)
     }
     
     private func startMonitoringIfNeeded() {
@@ -60,12 +62,14 @@ class DownloadManager {
             startMonitoring()
         } else {
             stopMonitoring()
-            updateDownloadingState(isActive: false)
+            closeDownloadViewImmediately()
         }
     }
     
     private func startMonitoring() {
         guard source == nil, let downloadsDirectory else { return }
+
+        requestDownloadsPermissionIfNeeded()
         
         hasPerformedInitialScan = false
         initialCrDownloadFiles.removeAll()
@@ -105,6 +109,7 @@ class DownloadManager {
         initialCrDownloadFiles.removeAll()
         ignoredFiles.removeAll()
         isDownloading = false
+        isDownloadCompleted = false
     }
     
     private func scanDownloadsDirectory() {
@@ -139,6 +144,10 @@ class DownloadManager {
     }
     
     private func processDownloadFiles(_ crDownloadFiles: Set<String>, allFiles: Set<String>) {
+        guard Defaults[.enableDownloadListener] else {
+            closeDownloadViewImmediately()
+            return
+        }
         
         if !hasPerformedInitialScan {
             hasPerformedInitialScan = true
@@ -196,6 +205,11 @@ class DownloadManager {
     private func updateDownloadingState(isActive: Bool) {
         completionTimer?.invalidate()
         completionTimer = nil
+
+        guard Defaults[.enableDownloadListener] else {
+            closeDownloadViewImmediately()
+            return
+        }
         
         if isActive {
             isDownloadCompleted = false

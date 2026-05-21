@@ -51,6 +51,16 @@ class LockScreenManager: ObservableObject {
     private var lockStatePollTask: Task<Void, Never>?
     
     // MARK: - Helpers
+
+    private var lockScreenPresentationEnabled: Bool {
+        Defaults[.enableLockScreenLiveActivity]
+        || Defaults[.enableLockScreenMediaWidget]
+        || Defaults[.enableLockScreenWeatherWidget]
+        || Defaults[.enableLockScreenFocusWidget]
+        || Defaults[.enableLockScreenReminderWidget]
+        || Defaults[.enableLockScreenTimerWidget]
+        || Defaults[.enableExtensionLockScreenWidgets]
+    }
     
     private func timestamp() -> String {
         let formatter = DateFormatter()
@@ -114,9 +124,7 @@ class LockScreenManager: ObservableObject {
             return
         }
         print("[\(timestamp())] LockScreenManager: 🔒 Screen LOCKED event received")
-        Logger.log("LockScreenManager: Screen locked", category: .lifecycle)
-        LockSoundPlayer.shared.playLockChime()
-        LockScreenDisplayContextProvider.shared.refresh(reason: "screen-locked")
+        let presentationEnabled = lockScreenPresentationEnabled
         
         // Update state SYNCHRONOUSLY without Task/await to avoid any delay
         lastUpdated = Date()
@@ -128,6 +136,17 @@ class LockScreenManager: ObservableObject {
         isLocked = true
         collapseTask?.cancel()
 
+        guard presentationEnabled else {
+            hideLockScreenPresentation()
+            startLockStatePolling()
+            print("[\(timestamp())] LockScreenManager: ⏭️ Lock screen widgets disabled")
+            return
+        }
+
+        Logger.log("LockScreenManager: Screen locked", category: .lifecycle)
+        LockSoundPlayer.shared.playLockChime()
+        LockScreenDisplayContextProvider.shared.refresh(reason: "screen-locked")
+
         viewModel?.closeForLockScreen()
 
         if coordinator.expandingView.show {
@@ -138,7 +157,7 @@ class LockScreenManager: ObservableObject {
         if coordinator.sneakPeek.show {
             coordinator.toggleSneakPeek(status: false, type: coordinator.sneakPeek.type)
         }
-        
+
         // Show panel FIRST (creates and shows window on lock screen)
         print("[\(timestamp())] LockScreenManager: 🎵 Showing lock screen panel")
         LockScreenPanelManager.shared.showPanel()
@@ -166,15 +185,24 @@ class LockScreenManager: ObservableObject {
             return
         }
         print("[\(timestamp())] LockScreenManager: 🔓 Screen UNLOCKED event received")
-        Logger.log("LockScreenManager: Screen unlocked", category: .lifecycle)
-        LockSoundPlayer.shared.playUnlockChime()
-        LockScreenDisplayContextProvider.shared.refresh(reason: "screen-unlocked")
+        let presentationEnabled = lockScreenPresentationEnabled
         lastUpdated = Date()
         updateIdleState(locked: false)
         isLocked = false
         stopLockStatePolling()
         postUnlockMusicHUDTask?.cancel()
         shouldDelayPostUnlockMusicHUD = Defaults[.enableLockScreenLiveActivity]
+
+        guard presentationEnabled else {
+            shouldDelayPostUnlockMusicHUD = false
+            hideLockScreenPresentation()
+            print("[\(timestamp())] LockScreenManager: ⏭️ Lock screen widgets disabled")
+            return
+        }
+
+        Logger.log("LockScreenManager: Screen unlocked", category: .lifecycle)
+        LockSoundPlayer.shared.playUnlockChime()
+        LockScreenDisplayContextProvider.shared.refresh(reason: "screen-unlocked")
 
         if shouldDelayPostUnlockMusicHUD {
             postUnlockMusicHUDTask = Task { [weak self] in
@@ -222,6 +250,20 @@ class LockScreenManager: ObservableObject {
         }
         
         print("[\(self.timestamp())] LockScreenManager: ✅ Lock screen deactivated")
+    }
+
+    private func hideLockScreenPresentation() {
+        collapseTask?.cancel()
+        LockScreenPanelManager.shared.hidePanel()
+        FullScreenArtworkWindowManager.shared.hide()
+        LockScreenLiveActivityWindowManager.shared.hideImmediately()
+        LockScreenWeatherManager.shared.hideWeatherWidget()
+        LockScreenTimerWidgetPanelManager.shared.hide(animated: false)
+        LockScreenReminderWidgetPanelManager.shared.hide()
+        TimerControlWindowManager.shared.hide(animated: false)
+        if coordinator.expandingView.type == .lockScreen {
+            coordinator.toggleExpandingView(status: false, type: .lockScreen)
+        }
     }
     
     // MARK: - Lock State Polling

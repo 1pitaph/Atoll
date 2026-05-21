@@ -802,6 +802,10 @@ extension Defaults.Keys {
         "externalDisplayStyle",
         default: .notch
     )
+    static let externalDisplayStylesByScreenID = Key<[String: String]>(
+        "externalDisplayStylesByScreenID",
+        default: [:]
+    )
     static let hideNonNotchUntilHover = Key<Bool>("hideNonNotchUntilHover", default: false)
     static let notchHeightMode = Key<WindowHeightMode>(
         "notchHeightMode",

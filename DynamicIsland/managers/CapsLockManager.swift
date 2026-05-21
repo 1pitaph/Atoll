@@ -30,27 +30,28 @@ class CapsLockManager: ObservableObject {
     
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
+    private var isMonitoring = false
+    private var cancellables = Set<AnyCancellable>()
     private let coordinator = DynamicIslandViewCoordinator.shared
     private let capsLockAnimation = Animation.spring(response: 0.32, dampingFraction: 0.85)
     
     private init() {
-        // Get initial state
         isCapsLockActive = NSEvent.modifierFlags.contains(.capsLock)
-        
-        // Monitor flag changes when app is focused
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-            return event
-        }
-        
-        // Monitor flag changes globally (even when app is not focused)
-        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor in
-                self?.handleFlagsChanged(event)
+
+        Defaults.publisher(.enableCapsLockIndicator, options: [])
+            .sink { [weak self] change in
+                guard let self else { return }
+                if change.newValue {
+                    self.startMonitoring()
+                } else {
+                    self.stopMonitoring()
+                }
             }
+            .store(in: &cancellables)
+
+        if Defaults[.enableCapsLockIndicator] {
+            startMonitoring()
         }
-        
-        print("CapsLockManager: ✅ Initialized with Caps Lock \(isCapsLockActive ? "ON" : "OFF")")
     }
     
     deinit {
@@ -60,9 +61,45 @@ class CapsLockManager: ObservableObject {
         if let monitor = globalEventMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        cancellables.removeAll()
+    }
+
+    private func startMonitoring() {
+        guard !isMonitoring else { return }
+        isCapsLockActive = NSEvent.modifierFlags.contains(.capsLock)
+
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
+            return event
+        }
+
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            Task { @MainActor in
+                self?.handleFlagsChanged(event)
+            }
+        }
+        isMonitoring = true
+        print("CapsLockManager: ✅ Initialized with Caps Lock \(isCapsLockActive ? "ON" : "OFF")")
+    }
+    
+    private func stopMonitoring() {
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
+        }
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+        isMonitoring = false
+        isCapsLockActive = false
+        if coordinator.sneakPeek.type == .capsLock {
+            coordinator.toggleSneakPeek(status: false, type: .capsLock)
+        }
     }
     
     private func handleFlagsChanged(_ event: NSEvent) {
+        guard Defaults[.enableCapsLockIndicator] else { return }
         let newState = event.modifierFlags.contains(.capsLock)
         
         guard newState != isCapsLockActive else { return }
