@@ -43,8 +43,7 @@ class LockScreenLiveActivityWindowManager {
     }
 
     private func isDynamicIslandModeForScreen(_ screen: NSScreen?) -> Bool {
-        guard let screen else { return false }
-        return shouldUseDynamicIslandMode(for: screen.localizedName)
+        shouldUseDynamicIslandMode(for: screen)
     }
 
     private init() {

@@ -363,16 +363,24 @@ struct ContentView: View {
     /// Whether the current screen should render as a Dynamic Island pill
     /// rather than the standard notch shape. Always false on physical notch screens.
     private var isDynamicIslandMode: Bool {
-        shouldUseDynamicIslandMode(for: currentScreenName)
+        shouldUseDynamicIslandMode(for: currentScreenName, screenID: currentScreenID)
     }
 
     private var currentScreenName: String {
         vm.screen ?? coordinator.selectedScreen
     }
 
+    private var currentScreenID: String? {
+        vm.screenID
+    }
+
+    private var currentScreen: NSScreen? {
+        atollScreen(matching: currentScreenName, screenID: currentScreenID)
+    }
+
     /// Whether the current screen lacks a physical notch.
     private var isNonNotchScreen: Bool {
-        guard let screen = NSScreen.screens.first(where: { $0.localizedName == currentScreenName }) else {
+        guard let screen = currentScreen else {
             return true
         }
         return screen.safeAreaInsets.top <= 0
@@ -1915,7 +1923,7 @@ struct ContentView: View {
     }
 
     private func hiddenHoverActivationContainsMouse(_ location: NSPoint = NSEvent.mouseLocation) -> Bool {
-        guard let screen = NSScreen.screens.first(where: { $0.localizedName == currentScreenName }) else {
+        guard let screen = currentScreen else {
             return false
         }
 

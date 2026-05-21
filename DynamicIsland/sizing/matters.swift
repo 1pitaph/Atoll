@@ -234,31 +234,37 @@ func addShadowPadding(to size: CGSize, isMinimalistic: Bool) -> CGSize {
     CGSize(width: size.width, height: size.height + notchShadowPaddingValue(isMinimalistic: isMinimalistic))
 }
 
-/// Determines whether a specific screen should render the Dynamic Island pill
-/// shape instead of the standard notch shape.
-///
-/// Returns `true` only when ALL of these conditions are met:
-/// 1. The user has selected `.dynamicIsland` in `externalDisplayStyle`
-/// 2. The screen does NOT have a physical notch (safeAreaInsets.top == 0)
-///
-/// Screens with a physical notch always use the standard notch shape.
-func shouldUseDynamicIslandMode(for screenName: String?) -> Bool {
-    var selectedScreen: NSScreen? = NSScreen.main
-    if let screenName {
-        selectedScreen = NSScreen.screens.first(where: { $0.localizedName == screenName })
+func atollScreen(matching screenName: String?, screenID: String? = nil) -> NSScreen? {
+    if let screenID,
+       let screen = NSScreen.screens.first(where: { atollScreenIdentifier(for: $0) == screenID }) {
+        return screen
     }
 
-    guard let screen = selectedScreen else {
-        // No screen found — fallback to standard notch
+    if let screenName,
+       let screen = NSScreen.screens.first(where: { $0.localizedName == screenName }) {
+        return screen
+    }
+
+    return NSScreen.main
+}
+
+/// Determines whether a specific screen should render the detached Dynamic
+/// Island pill shape instead of the standard notch shape. Physical notch
+/// screens always use the standard notch shape.
+func shouldUseDynamicIslandMode(for screen: NSScreen?) -> Bool {
+    guard let screen else {
         return false
     }
 
-    // Physical notch screens always use standard notch shape
     guard screen.safeAreaInsets.top <= 0 else {
         return false
     }
 
     return externalDisplayStyle(for: screen) == .dynamicIsland
+}
+
+func shouldUseDynamicIslandMode(for screenName: String?, screenID: String? = nil) -> Bool {
+    shouldUseDynamicIslandMode(for: atollScreen(matching: screenName, screenID: screenID))
 }
 
 func atollScreenIdentifier(for screen: NSScreen) -> String {

@@ -250,13 +250,13 @@ class BatteryStatusViewModel: ObservableObject {
         }
 
         if let externalDynamicIslandScreen = NSScreen.screens.first(where: {
-            $0.localizedName != mainScreenName && shouldUseDynamicIslandMode(for: $0.localizedName)
+            $0.localizedName != mainScreenName && shouldUseDynamicIslandMode(for: $0)
         }) {
             return externalDynamicIslandScreen.localizedName
         }
 
         if let anyDynamicIslandScreen = NSScreen.screens.first(where: {
-            shouldUseDynamicIslandMode(for: $0.localizedName)
+            shouldUseDynamicIslandMode(for: $0)
         }) {
             return anyDynamicIslandScreen.localizedName
         }

@@ -465,7 +465,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// shadow insets and top-offset only when the screen lacks a physical notch
     /// and the user has chosen the Dynamic Island style.
     private func adjustedSizeForScreen(_ baseSize: CGSize, screen: NSScreen) -> CGSize {
-        guard shouldUseDynamicIslandMode(for: screen.localizedName) else {
+        guard shouldUseDynamicIslandMode(for: screen) else {
             return baseSize
         }
         var adjusted = baseSize
